@@ -1,0 +1,135 @@
+@import "tailwindcss";
+@source "../views";
+
+[x-cloak] { display: none !important; }
+
+
+:root {
+    --color-primary: #0a0a0a;
+    --color-secondary: #151515;
+    --color-tertiary: #f36100;
+}
+
+.bg-primary {
+    background-color: var(--color-primary);
+}
+
+.text-primary {
+    color: var(--color-primary);
+}
+
+.border-primary {
+    border-color: var(--color-primary);
+}
+
+.bg-secondary {
+    background-color: var(--color-secondary);
+}
+
+.text-secondary {
+    color: var(--color-secondary);
+}
+
+.border-secondary {
+    border-color: var(--color-secondary);
+}
+
+.bg-tertiary {
+    background-color: var(--color-tertiary);
+}
+
+.text-tertiary {
+    color: var(--color-tertiary);
+}
+
+.border-tertiary {
+    border-color: var(--color-tertiary);
+}
+
+
+/* Estilos para el menú móvil landing page*/
+.offcanvas-menu {
+	transform: translateX(100%);
+	transition: transform 0.3s ease;
+}
+
+.offcanvas-menu.open {
+	transform: translateX(0);
+}
+
+.overlay {
+	opacity: 0;
+	visibility: hidden;
+	transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.overlay.active {
+	opacity: 1;
+	visibility: visible;
+}
+
+
+/* Dashboard*/
+#mobile-sidebar {
+    transition: transform 0.3s ease-in-out;
+}
+
+#mobile-sidebar.closed {
+    transform: translateX(-100%);
+}
+
+#mobile-sidebar.open {
+    transform: translateX(0);
+}
+
+/* Overlay con transición */
+#mobile-overlay {
+    transition: opacity 0.3s ease-in-out;
+}
+
+/* Animación del botón hamburguesa */
+.hamburger-line {
+    transition: all 0.3s ease;
+}
+
+.hamburger-open .hamburger-line:nth-child(1) {
+    transform: rotate(45deg) translate(5px, 5px);
+}
+
+.hamburger-open .hamburger-line:nth-child(2) {
+    opacity: 0;
+}
+
+.hamburger-open .hamburger-line:nth-child(3) {
+    transform: rotate(-45deg) translate(5px, -5px);
+}
+
+/* Animación del SVG hamburguesa */
+.hamburger-icon {
+    width: 24px;
+    height: 24px;
+    cursor: pointer;
+    transition: transform 0.3s ease;
+}
+
+.hamburger-icon line {
+    stroke: white;
+    stroke-width: 2;
+    stroke-linecap: round;
+    transform-origin: center;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.hamburger-open .hamburger-icon line:nth-child(1) {
+    transform: translateY(6px) rotate(45deg);
+}
+
+.hamburger-open .hamburger-icon line:nth-child(2) {
+    opacity: 0;
+    transform: scaleX(0);
+}
+
+.hamburger-open .hamburger-icon line:nth-child(3) {
+    transform: translateY(-6px) rotate(-45deg);
+}
+
