@@ -2,22 +2,15 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Login;
-use Illuminate\Support\Facades\Session;
 use Illuminate\Http\Request;
 
 class AdminController extends Controller
 {
-    public function dashboard()
+    public function dashboard(Request $request)
     {
-        $login = Login::find(Session::get('login_id'));
-
-        if (!$login || class_basename($login->loginable) !== 'Admin') {
-            return redirect('/login')->withErrors(['access' => 'Acceso no autorizado']);
-        }
-
-        $admin = $login->loginable;
-
+        $admin = $request->attributes->get('actor');
         return view('admin.dashboard', compact('admin'));
     }
 }
+
+

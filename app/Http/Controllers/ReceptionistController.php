@@ -2,23 +2,14 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Login;
 use Illuminate\Http\Request;
-
-use Illuminate\Support\Facades\Session;
 
 class ReceptionistController extends Controller
 {
-    public function dashboard()
+    public function dashboard(Request $request)
     {
-        $login = Login::find(Session::get('login_id'));
-
-        if (!$login || class_basename($login->loginable) !== 'Receptionist') {
-            return redirect('/login')->withErrors(['access' => 'Acceso no autorizado']);
-        }
-
-        $receptionist = $login->loginable;
-
+        $receptionist = $request->attributes->get('actor');
         return view('receptionist.dashboard', compact('receptionist'));
     }
 }
+
