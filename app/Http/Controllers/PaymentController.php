@@ -10,9 +10,22 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Session;
 use Carbon\Carbon;
 
+/**
+ * Class PaymentController
+ *
+ * Controlador encargado de gestionar los pagos de los usuarios, incluyendo:
+ * CRUD de pagos, filtrado, dashboard de ganancias y validaciones por gimnasio.
+ *
+ * @package App\Http\Controllers
+ */
 class PaymentController extends Controller
 {
-    private function getCurrentUser()
+    /**
+     * Obtiene el usuario actualmente autenticado.
+     *
+     * @return \App\Models\User
+     */
+    private function getCurrentUser(): User
     {
         $login = Login::find(Session::get('login_id'));
 
@@ -23,13 +36,25 @@ class PaymentController extends Controller
         return $login->loginable;
     }
 
-    private function authorizePaymentGym(Payment $payment, $gymId)
+    /**
+     * Autoriza que un pago pertenezca al gimnasio del usuario.
+     *
+     * @param Payment $payment
+     * @param int $gymId
+     */
+    private function authorizePaymentGym(Payment $payment, int $gymId): void
     {
         if ($payment->user->gym_id !== $gymId) {
             abort(403, 'No autorizado.');
         }
     }
 
+    /**
+     * Lista los pagos con filtros y paginación.
+     *
+     * @param Request $request
+     * @return \Illuminate\View\View
+     */
     public function index(Request $request)
     {
         $user = $this->getCurrentUser();
@@ -77,12 +102,18 @@ class PaymentController extends Controller
         return view('admin.payments.index', compact('payments', 'users', 'memberships', 'paymentMethods'));
     }
 
+    /**
+     * Valida y registra un nuevo pago.
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\RedirectResponse
+     */
     public function store(Request $request)
     {
         $user = $this->getCurrentUser();
         $gym = $user->gym;
 
-        $request->validate([
+        $validated = $request->validate([
             'date' => 'required|date',
             'amount' => 'required|numeric|min:0',
             'payment_method' => 'required|string|max:255',
@@ -98,16 +129,24 @@ class PaymentController extends Controller
             }],
         ]);
 
-        Payment::create($request->only('date', 'amount', 'payment_method', 'user_id', 'membership_id'));
+        Payment::create($validated);
 
         $route = class_basename($user) === 'Admin' ? 'admin.payments' : 'receptionist.payments';
 
         return redirect()->route($route)->with('success', 'Pago registrado correctamente.');
     }
 
+    /**
+     * Muestra el formulario de edición de un pago.
+     *
+     * @param Payment $payment
+     * @return \Illuminate\View\View
+     */
+    public function edit(Payment $payment)
     {
         $user = $this->getCurrentUser();
         $gym = $user->gym;
+
         $this->authorizePaymentGym($payment, $gym->id);
 
         $users = User::where('gym_id', $gym->id)->get();
@@ -118,14 +157,21 @@ class PaymentController extends Controller
         return view('admin.payments.edit', compact('payment', 'users', 'memberships', 'paymentMethods'));
     }
 
-
+    /**
+     * Actualiza un pago existente.
+     *
+     * @param Request $request
+     * @param Payment $payment
+     * @return \Illuminate\Http\RedirectResponse
+     */
     public function update(Request $request, Payment $payment)
     {
         $user = $this->getCurrentUser();
         $gym = $user->gym;
+
         $this->authorizePaymentGym($payment, $gym->id);
 
-        $request->validate([
+        $validated = $request->validate([
             'date' => 'required|date',
             'amount' => 'required|numeric|min:0',
             'payment_method' => 'required|string|max:255',
@@ -136,18 +182,28 @@ class PaymentController extends Controller
             }],
         ]);
 
-        $payment->update($request->only('date', 'amount', 'payment_method', 'user_id'));
+        $payment->update($validated);
 
         return redirect()->route('admin.payments')->with('success', 'Pago actualizado correctamente.');
     }
 
+    /**
+     * Elimina un pago registrado.
+     *
+     * @param Payment $payment
+     * @return \Illuminate\Http\RedirectResponse
+     */
     public function destroy(Payment $payment)
     {
         $payment->delete();
         return redirect()->route('admin.payments')->with('success', 'Pago eliminado correctamente.');
     }
 
-
+    /**
+     * Muestra el dashboard de pagos y ganancias.
+     *
+     * @return \Illuminate\View\View
+     */
     public function dashboard()
     {
         $hoy = Carbon::today();
