@@ -12,146 +12,108 @@ use Carbon\Carbon;
 
 class PaymentController extends Controller
 {
-    public function index(Request $request)
+    private function getCurrentUser()
     {
-        $loginId = Session::get('login_id');
-        $login = Login::find($loginId);
+        $login = Login::find(Session::get('login_id'));
 
         if (!$login || !$login->loginable) {
-            return redirect('/login')->withErrors(['access' => 'Sesión inválida']);
+            abort(403, 'Sesión inválida.');
         }
 
-        $user = $login->loginable;
+        return $login->loginable;
+    }
+
+    private function authorizePaymentGym(Payment $payment, $gymId)
+    {
+        if ($payment->user->gym_id !== $gymId) {
+            abort(403, 'No autorizado.');
+        }
+    }
+
+    public function index(Request $request)
+    {
+        $user = $this->getCurrentUser();
         $gym = $user->gym;
         $perPage = $request->input('per_page', 10);
 
-        $query = Payment::whereHas('user', function ($q) use ($gym, $request) {
-            $q->where('gym_id', $gym->id);
+        $query = Payment::with(['user', 'membership'])
+            ->whereHas('user', function ($q) use ($gym, $request) {
+                $q->where('gym_id', $gym->id);
 
-            if ($request->filled('user_name')) {
-                $q->where('name', 'like', '%' . $request->user_name . '%');
+                if ($request->filled('user_name')) {
+                    $q->where('name', 'like', '%' . $request->user_name . '%');
+                }
+            });
+
+        $filters = ['id', 'user_id', 'payment_method', 'date', 'membership_id'];
+        foreach ($filters as $filter) {
+            if ($request->filled($filter) && $request->$filter !== 'all') {
+                $query->when($filter === 'id', fn($q) => $q->where('id', 'like', "%{$request->$filter}%"))
+                      ->when($filter === 'user_id', fn($q) => $q->where('user_id', $request->$filter))
+                      ->when($filter === 'payment_method', fn($q) => $q->where('payment_method', $request->$filter))
+                      ->when($filter === 'date', fn($q) => $q->whereDate('date', $request->$filter))
+                      ->when($filter === 'membership_id', fn($q) => $q->where('membership_id', $request->$filter));
             }
-        })->with(['user', 'membership']);
+        }
 
         if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('amount', 'like', "%$search%")
-                    ->orWhereHas('user', function ($q2) use ($search) {
-                        $q2->where('name', 'like', "%$search%");
-                    });
+                  ->orWhereHas('user', fn($q2) => $q2->where('name', 'like', "%$search%"));
             });
-        }
-
-        // Filtro por id
-        if ($request->has('id') && $request->id !== null) {
-            $query->where('id', 'like', '%' . $request->id . '%');
-        }
-
-        // Filtro por id de usuario
-        if ($request->filled('user_id')) {
-            $query->where('user_id', $request->user_id);
-        }
-
-        if ($request->filled('payment_method') && $request->payment_method !== 'all') {
-            $query->where('payment_method', $request->payment_method);
-        }
-
-        if ($request->filled('date')) {
-            $query->whereDate('date', $request->date);
-        }
-
-        if ($request->filled('membership_id')) {
-            $query->where('membership_id', $request->membership_id);
         }
 
         $payments = $query->paginate($perPage)->withQueryString();
 
-        $memberships = Membership::whereHas('user', function ($q) use ($gym) {
-            $q->where('gym_id', $gym->id);
-        })->whereHas('payments')->with('user')->get();
+        $memberships = Membership::whereHas('user', fn($q) => $q->where('gym_id', $gym->id))
+            ->whereHas('payments')->with('user')->get();
 
-        $paymentMethods = Payment::whereHas('user', function ($q) use ($gym) {
-            $q->where('gym_id', $gym->id);
-        })->select('payment_method')->distinct()->pluck('payment_method');
+        $paymentMethods = Payment::whereHas('user', fn($q) => $q->where('gym_id', $gym->id))
+            ->distinct()->pluck('payment_method');
 
         $users = User::where('gym_id', $gym->id)->get();
-
-
 
         return view('admin.payments.index', compact('payments', 'users', 'memberships', 'paymentMethods'));
     }
 
     public function store(Request $request)
     {
-        $login = Login::find(Session::get('login_id'));
-        $user = $login->loginable;
+        $user = $this->getCurrentUser();
         $gym = $user->gym;
 
         $request->validate([
             'date' => 'required|date',
             'amount' => 'required|numeric|min:0',
             'payment_method' => 'required|string|max:255',
-            'user_id' => [
-                'required',
-                function ($attribute, $value, $fail) use ($gym) {
-                    $user = User::where('id', $value)
-                        ->where('gym_id', $gym->id)
-                        ->first();
-
-                    if (!$user) {
-                        $fail('No existe un usuario con esta cédula en el gimnasio.');
-                    }
+            'user_id' => ['required', function ($attr, $value, $fail) use ($gym) {
+                if (!User::where('id', $value)->where('gym_id', $gym->id)->exists()) {
+                    $fail('Usuario no encontrado en el gimnasio.');
                 }
-            ],
-            'membership_id' => [
-                'required',
-                function ($attribute, $value, $fail) use ($gym) {
-                    $membership = Membership::where('id', $value)
-                        ->whereHas('user', function ($q) use ($gym) {
-                            $q->where('gym_id', $gym->id);
-                        })
-                        ->first();
-
-                    if (!$membership) {
-                        $fail('La membresía no corresponde a un usuario del gimnasio.');
-                    }
+            }],
+            'membership_id' => ['required', function ($attr, $value, $fail) use ($gym) {
+                if (!Membership::where('id', $value)->whereHas('user', fn($q) => $q->where('gym_id', $gym->id))->exists()) {
+                    $fail('Membresía inválida para este gimnasio.');
                 }
-            ],
+            }],
         ]);
 
-        Payment::create([
-            'date' => $request->date,
-            'amount' => $request->amount,
-            'payment_method' => $request->payment_method,
-            'user_id' => $request->user_id,
-            'membership_id' => $request->membership_id,
-        ]);
+        Payment::create($request->only('date', 'amount', 'payment_method', 'user_id', 'membership_id'));
 
-        return redirect()->route(class_basename($user) === 'Admin' ? 'admin.payments' : 'receptionist.payments')
-            ->with('success', 'Pago registrado correctamente.');
+        $route = class_basename($user) === 'Admin' ? 'admin.payments' : 'receptionist.payments';
+
+        return redirect()->route($route)->with('success', 'Pago registrado correctamente.');
     }
 
-    public function edit(Payment $payment)
     {
-        $login = Login::find(Session::get('login_id'));
-        $user = $login->loginable;
+        $user = $this->getCurrentUser();
         $gym = $user->gym;
-
-        // Asegurarse de que el pago pertenece a un usuario del gimnasio
-        if ($payment->user->gym_id !== $gym->id) {
-            abort(403, 'No autorizado.');
-        }
+        $this->authorizePaymentGym($payment, $gym->id);
 
         $users = User::where('gym_id', $gym->id)->get();
-
-        $memberships = Membership::whereHas('user', function ($q) use ($gym) {
-            $q->where('gym_id', $gym->id);
-        })->get();
-
-        $paymentMethods = Payment::whereHas('user', function ($q) use ($gym) {
-            $q->where('gym_id', $gym->id);
-        })->select('payment_method')->distinct()->pluck('payment_method');
+        $memberships = Membership::whereHas('user', fn($q) => $q->where('gym_id', $gym->id))->get();
+        $paymentMethods = Payment::whereHas('user', fn($q) => $q->where('gym_id', $gym->id))
+            ->distinct()->pluck('payment_method');
 
         return view('admin.payments.edit', compact('payment', 'users', 'memberships', 'paymentMethods'));
     }
@@ -159,53 +121,34 @@ class PaymentController extends Controller
 
     public function update(Request $request, Payment $payment)
     {
-
-
-        $login = Login::find(Session::get('login_id'));
-        $user = $login->loginable;
+        $user = $this->getCurrentUser();
         $gym = $user->gym;
-    
-        // Verificar que el pago esté en el gimnasio correcto
-        if ($payment->user->gym_id !== $gym->id) {
-            abort(403, 'No autorizado.');
-        }
-    
+        $this->authorizePaymentGym($payment, $gym->id);
+
         $request->validate([
             'date' => 'required|date',
             'amount' => 'required|numeric|min:0',
             'payment_method' => 'required|string|max:255',
-            'user_id' => [
-                'required',
-                function ($attribute, $value, $fail) use ($gym) {
-                    if (!User::where('id', $value)->where('gym_id', $gym->id)->exists()) {
-                        $fail('El usuario no pertenece a este gimnasio.');
-                    }
+            'user_id' => ['required', function ($attr, $value, $fail) use ($gym) {
+                if (!User::where('id', $value)->where('gym_id', $gym->id)->exists()) {
+                    $fail('Usuario no pertenece a este gimnasio.');
                 }
-            ],
-
+            }],
         ]);
-    
-        $payment->update([
-            'date' => $request->date,
-            'amount' => $request->amount,
-            'payment_method' => $request->payment_method,
-            'user_id' => $request->user_id,
-        ]);
-    
-        return redirect()->route('admin.payments')->with('success', 'Pago actualizada correctamente.');
 
+        $payment->update($request->only('date', 'amount', 'payment_method', 'user_id'));
+
+        return redirect()->route('admin.payments')->with('success', 'Pago actualizado correctamente.');
     }
-    
-    
 
     public function destroy(Payment $payment)
     {
         $payment->delete();
-
         return redirect()->route('admin.payments')->with('success', 'Pago eliminado correctamente.');
     }
 
-     public function dashboard()
+
+    public function dashboard()
     {
         $hoy = Carbon::today();
         $inicioMes = Carbon::now()->startOfMonth();
@@ -215,7 +158,6 @@ class PaymentController extends Controller
         $gananciasMes = Payment::whereBetween('created_at', [$inicioMes, Carbon::now()])->sum('amount');
         $gananciasAnio = Payment::whereBetween('created_at', [$inicioAnio, Carbon::now()])->sum('amount');
 
-        // Datos para la gráfica mensual
         $gananciasPorMes = Payment::selectRaw('MONTH(created_at) as mes, SUM(amount) as total')
             ->whereYear('created_at', Carbon::now()->year)
             ->groupBy('mes')
@@ -224,11 +166,9 @@ class PaymentController extends Controller
 
         $meses = [];
         $totales = [];
-
         for ($i = 1; $i <= 12; $i++) {
-            $meses[] = ucfirst(Carbon::create()->month($i)->locale('es')->monthName); // ej: Enero, Febrero
-            $total = $gananciasPorMes->firstWhere('mes', $i)?->total ?? 0;
-            $totales[] = $total;
+            $meses[] = ucfirst(Carbon::create()->month($i)->locale('es')->monthName);
+            $totales[] = $gananciasPorMes->firstWhere('mes', $i)?->total ?? 0;
         }
 
         return view('admin.dashboard', compact(
@@ -239,5 +179,4 @@ class PaymentController extends Controller
             'totales'
         ));
     }
-
 }
