@@ -12,4 +12,3 @@ class ReceptionistController extends Controller
         return view('receptionist.dashboard', compact('receptionist'));
     }
 }
-
