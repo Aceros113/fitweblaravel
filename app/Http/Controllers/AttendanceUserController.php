@@ -10,17 +10,59 @@ use Illuminate\Support\Facades\Session;
 
 class AttendanceUserController extends Controller
 {
-    public function index(Request $request)
+
+    private function getAuthenticatedUser()
     {
         $login = Login::find(Session::get('login_id'));
 
-        if (!$login || !$login->loginable) {
+        if (!$login || !$login->loginable || !$login->loginable->gym) {
+            return null;
+        }
+
+        return $login->loginable;
+    }
+
+    private function getGymUsers($gymId)
+    {
+        return User::where('gym_id', $gymId)->get();
+    }
+
+    private function validateAttendance(Request $request, $gym)
+    {
+        return $request->validate([
+            'check_in' => 'required|date_format:H:i',
+            'check_out' => 'nullable|date_format:H:i|after_or_equal:check_in',
+            'date' => 'required|date',
+            'user_id' => [
+                'required',
+                function ($attribute, $value, $fail) use ($gym) {
+                    $user = User::where('id', $value)
+                        ->where('gym_id', $gym->id)
+                        ->first();
+
+                    if (!$user) {
+                        $fail('No existe un usuario con este ID en el gimnasio.');
+                    }
+                },
+            ],
+        ]);
+    }
+
+    private function authorizeAttendance(AttendanceUser $attendance, $gymId)
+    {
+        if ($attendance->user->gym_id !== $gymId) {
+            abort(403, 'No autorizado');
+        }
+    }
+
+    public function index(Request $request)
+    {
+        $user = $this->getAuthenticatedUser();
+        if (!$user) {
             return redirect('/login')->withErrors(['access' => 'Sesión inválida']);
         }
 
-        $user = $login->loginable;
         $gym = $user->gym;
-
         $perPage = $request->input('per_page', 10);
 
         $query = AttendanceUser::whereHas('user', function ($q) use ($gym, $request) {
@@ -40,130 +82,75 @@ class AttendanceUserController extends Controller
         }
 
         $attendances = $query->paginate($perPage)->withQueryString();
-
-        $users = User::where('gym_id', $gym->id)->get();
+        $users = $this->getGymUsers($gym->id);
 
         return view('admin.attendance-users.index', compact('attendances', 'user', 'users'));
     }
 
     public function create()
     {
-        $login = Login::find(Session::get('login_id'));
-        $user = $login?->loginable;
-
-        if (!$user || !$user->gym) {
+        $user = $this->getAuthenticatedUser();
+        if (!$user) {
             return redirect('/login')->withErrors(['access' => 'Sesión inválida']);
         }
 
-        $users = User::where('gym_id', $user->gym->id)->get();
-
+        $users = $this->getGymUsers($user->gym->id);
         return view('admin.attendance-users.create', compact('user', 'users'));
     }
 
     public function store(Request $request)
     {
-        $login = Login::find(Session::get('login_id'));
-        $user = $login?->loginable;
-        $gym = $user->gym;
-
-        if (!$user || !$gym) {
+        $user = $this->getAuthenticatedUser();
+        if (!$user) {
             return redirect('/login')->withErrors(['access' => 'Sesión inválida']);
         }
 
-        $request->validate([
-            'check_in' => 'required|date_format:H:i',
-            'check_out' => 'nullable|date_format:H:i|after_or_equal:check_in',
-            'date' => 'required|date',
-            'user_id' => [
-                'required',
-                function ($attribute, $value, $fail) use ($gym) {
-                    $user = User::where('id', $value)
-                        ->where('gym_id', $gym->id)
-                        ->first();
+        $validated = $this->validateAttendance($request, $user->gym);
 
-                    if (!$user) {
-                        $fail('No existe un usuario con este ID en el gimnasio.');
-                    }
-                }
-            ],
-        ]);
-
-
-        AttendanceUser::create([
-            'user_id' => $request->user_id,
-            'check_in' => $request->check_in,
-            'check_out' => $request->check_out,
-            'date' => $request->date,
-
-        ]);
+        AttendanceUser::create($validated);
 
         return redirect()->route('admin.attendance-users')
                          ->with('success', 'Asistencia registrada exitosamente.');
     }
 
-
     public function edit(AttendanceUser $attendance)
     {
-        $login = Login::find(Session::get('login_id'));
-        $user = $login?->loginable;
-        $gym = $user->gym;
-
-        if (!$user || !$gym) {
+        $user = $this->getAuthenticatedUser();
+        if (!$user) {
             return redirect('/login')->withErrors(['access' => 'Sesión inválida']);
         }
 
-        if ($attendance->user->gym_id !== $gym->id) {
-            abort(403, 'No autorizado');
-        }
+        $this->authorizeAttendance($attendance, $user->gym->id);
 
-        $users = User::where('gym_id', $gym->id)->get();
+        $users = $this->getGymUsers($user->gym->id);
 
         return view('admin.attendance-users.edit', compact('attendance', 'users', 'user'));
     }
 
-        public function update(Request $request, AttendanceUser $attendance)
+    public function update(Request $request, AttendanceUser $attendance)
     {
-        $login = Login::find(Session::get('login_id'));
-        $user = $login?->loginable;
-        $gym = $user->gym;
-        
-        if (!$user || !$user->gym) {
+        $user = $this->getAuthenticatedUser();
+        if (!$user) {
             return redirect('/login')->withErrors(['access' => 'Sesión inválida']);
         }
 
-        // Cargar la relación user si no está cargada
         $attendance->load('user');
+        $this->authorizeAttendance($attendance, $user->gym->id);
 
-        // Verificar que el usuario de la asistencia exista
-        if (!$attendance->user) {
-            return back()->with('error', 'El usuario asociado a esta asistencia no existe');
-        }
+        $validated = $request->validate([
+            'check_out' => 'required|date_format:H:i|after_or_equal:check_in',
+        ]);
 
-        // Verificar que el usuario pertenezca al gimnasio
-        if ($attendance->user->gym_id !== $user->gym->id) {
-            abort(403, 'No autorizado');
-        }
+        $attendance->update([
+            'check_out' => $validated['check_out'],
+        ]);
 
-try {
-    $validated = $request->validate([
-        'check_out' => 'required|date_format:H:i|after_or_equal:check_in',
-    ]);
-
-    $attendance->update([
-        'check_out' => $validated['check_out'],
-    ]);
-
-            return redirect()->route('admin.attendance-users')
-                        ->with('success', 'Asistencia finalizada correctamente.');
-} catch (\Exception $e) {
-    return redirect()->back()->with('error', 'Error al actualizar la hora de salida: '.$e->getMessage());
-}
-
+        return redirect()->route('admin.attendance-users')
+                         ->with('success', 'Asistencia finalizada correctamente.');
     }
 
     public function destroy(AttendanceUser $attendance)
     {
-
         $attendance->delete();
 
         return redirect()->route('admin.attendance-users')
