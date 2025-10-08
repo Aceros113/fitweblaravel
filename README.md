@@ -38,73 +38,31 @@ This stage focused on **Controller layer**, **middleware**, **routing**, and **t
 ### Controllers
 All controllers were refactored to **centralize logic, validations, and session handling**:
 
-- **LoginController**
-  - Added **PHPDoc documentation** and detailed **validation rules** for login.  
-  - Centralized **session management** and user type handling.  
-  - Error handling improved for unsupported user types.
-
-- **UserController**
-  - Centralized session validation via private helper `getCurrentUser()`.  
-  - Advanced search & filtering by **name, email, phone, gender, state, birth_date**.  
-  - Standardized validation for create/update users.  
-  - Dashboard stats for active/inactive users and monthly reports.  
-
-- **AttendanceUserController**
-  - Refactored attendance logic with **authorization and validation helpers**.  
-  - Paginated attendance lists with filtering by user, date, and gym.  
-  - Secure update and deletion with gym ownership checks.  
-
-- **PaymentController**
-  - Centralized **user and gym authorization**.  
-  - Standardized validation for payment creation and updates.  
-  - Dashboard statistics: **daily, monthly, yearly revenue**.  
-  - Supports filtering payments by user, membership, payment method, and date.  
-
-- **DashboardController**
-  - Aggregates active/inactive users and monthly revenue.  
-  - Uses optimized queries to improve performance.  
-
-- **ReceptionistController**
-  - Simple dashboard view for receptionist role.  
+- **LoginController** – centralizes login, session, and user-type logic with PHPDoc.  
+- **UserController** – advanced search, filtering, standardized validation, dashboard stats.  
+- **AttendanceUserController** – attendance CRUD, authorization by gym, pagination.  
+- **PaymentController** – payments CRUD, filtering, dashboard statistics, gym authorization.  
+- **DashboardController** – active/inactive users, revenue aggregation.  
+- **ReceptionistController** – receptionist dashboard view.
 
 ---
 
 ### Routes & App Configuration
 - ✨ Routes now use **single role middleware** to protect access per role.  
-- ⚡ `bootstrap/app.php` updated to remove old Admin/Receptionist middlewares and register the new generic one.  
+- ⚡ `bootstrap/app.php` updated to register the new generic role middleware.  
 - Clear separation between **admin routes** and **receptionist routes**.  
 
 ---
 
 ### ✅ Testing & CI/CD
-- **Feature Tests**
-  - MiddlewareRoleTest: validates access control for roles.  
-  - UserIntegrationTest: creates users and verifies database updates.  
-  - PaymentTest, AttendanceTest: validate CRUD operations and dashboard stats.  
+Laravel comes with **built-in testing capabilities** that allow you to run tests directly from the command line:
 
-- **Browser/Dusk Tests**
-  - Login flows and UI interaction for admin and receptionist dashboards.  
+```bash
+# Run all tests
+php artisan test
 
-- **CI/CD**
-  - GitHub Actions workflow runs tests automatically on `push`.  
-  - Ensures **code stability** before merging changes.  
+# Run a specific test file
+php artisan test --filter UserIntegrationTest
 
----
-
-### 📜 Validation & Security
-- Comprehensive **form validation** with detailed error messages.  
-- **Authorization checks** to ensure users can only access their gym data.  
-- Session-based authentication using Laravel `Session`.  
-- Role checks in middleware ensure separation of Admin and Receptionist access.  
-
----
-
-### 📦 Code Quality & PHPDoc
-- All controllers and middleware documented with **PHPDoc**.  
-- Refactoring eliminated duplicate code and improved **readability and maintainability**.  
-- Centralized private helper methods to **reduce redundancy**.  
-
----
-
-## 📄 License
-This project is based on [Laravel](https://laravel.com) and distributed under the MIT license.
+# Run Dusk browser tests (requires ChromeDriver)
+php artisan dusk
