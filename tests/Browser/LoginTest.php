@@ -8,9 +8,7 @@ use Tests\DuskTestCase;
 
 class LoginTest extends DuskTestCase
 {
-    /**
-     * A Dusk test example.
-     */
+ 
 public function test_login_admin()
 {
     $this->browse(function ($browser) {

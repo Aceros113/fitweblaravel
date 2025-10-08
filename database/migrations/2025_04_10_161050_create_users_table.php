@@ -20,6 +20,8 @@ return new class extends Migration
             $table->string('email')->unique();
             $table->string('state');
             $table->foreignId('gym_id')->constrained('gyms')->onDelete('cascade');
+            $table->timestamp('email_verified_at')->nullable();
+
             $table->timestamps();
         });        
     }
