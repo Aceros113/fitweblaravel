@@ -11,4 +11,5 @@ class AdminController extends Controller
         $admin = $request->attributes->get('actor');
         return view('admin.dashboard', compact('admin'));
     }
+
 }
